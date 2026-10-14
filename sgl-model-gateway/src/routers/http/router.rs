@@ -3,7 +3,10 @@ use std::{sync::Arc, time::Instant};
 use axum::{
     body::{to_bytes, Body},
     extract::Request,
-    http::{header::CONTENT_TYPE, HeaderMap, HeaderValue, Method, StatusCode},
+    http::{
+        header::{AUTHORIZATION, CONTENT_TYPE},
+        HeaderMap, HeaderValue, Method, StatusCode,
+    },
     response::{IntoResponse, Response},
     Json,
 };
@@ -94,9 +97,21 @@ impl Router {
 
         match self.select_first_worker() {
             Ok(worker_url) => {
+                let Some(worker) = self.worker_registry.get_by_url(&worker_url) else {
+                    return error::service_unavailable(
+                        "no_workers",
+                        "Selected worker is no longer available",
+                    );
+                };
+                let api_key = worker.api_key();
                 let mut request_builder = self.client.get(format!("{}/{}", worker_url, endpoint));
+                if let Some(key) = api_key {
+                    request_builder = request_builder.bearer_auth(key);
+                }
                 for (name, value) in headers {
-                    if header_utils::should_forward_request_header(&name) {
+                    if header_utils::should_forward_request_header(&name)
+                        && !(api_key.is_some() && name.eq_ignore_ascii_case("authorization"))
+                    {
                         request_builder = request_builder.header(name, value);
                     }
                 }
@@ -393,14 +408,14 @@ impl Router {
                         }
                     };
 
-                    if let Some(key) = api_key {
-                        let mut auth_header = String::with_capacity(7 + key.len());
-                        auth_header.push_str("Bearer ");
-                        auth_header.push_str(&key);
-                        request_builder = request_builder.header("Authorization", auth_header);
+                    if let Some(key) = &api_key {
+                        request_builder = request_builder.bearer_auth(key);
                     }
 
                     for (name, value) in headers {
+                        if api_key.is_some() && name == AUTHORIZATION {
+                            continue;
+                        }
                         request_builder = request_builder.header(name.clone(), value.clone());
                     }
 
@@ -547,17 +562,15 @@ impl Router {
                 .json(typed_req) // Use json() directly with typed request
         };
 
-        if let Some(key) = api_key {
-            // Pre-allocate string with capacity to avoid reallocation
-            let mut auth_header = String::with_capacity(7 + key.len());
-            auth_header.push_str("Bearer ");
-            auth_header.push_str(&key);
-            request_builder = request_builder.header("Authorization", auth_header);
+        if let Some(key) = &api_key {
+            request_builder = request_builder.bearer_auth(key);
         }
 
         if let Some(headers) = headers {
             for (name, value) in headers {
-                if header_utils::should_forward_request_header(name.as_str()) {
+                if header_utils::should_forward_request_header(name.as_str())
+                    && !(api_key.is_some() && name == AUTHORIZATION)
+                {
                     request_builder = request_builder.header(name, value);
                 }
             }

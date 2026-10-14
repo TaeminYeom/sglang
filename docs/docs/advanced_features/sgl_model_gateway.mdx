@@ -1880,6 +1880,14 @@ curl -H "Authorization: Bearer router-key" \
   -d '{"url":"http://worker:8000","api_key":"worker-key"}'
 ```
 
+In the regular HTTP router, a configured worker API key takes precedence over
+the client's `Authorization` header for inference, proxied GET requests, and
+requests broadcast to workers. The router sends only
+`Authorization: Bearer <worker-key>` to that worker. If no worker key is
+configured, client authorization is forwarded. This allows the router and its
+workers to use different keys. The OpenAI backend router retains its
+client-key-first BYOK behavior, and PD routing is unchanged.
+
 ### Security Configurations
 
 1. **No Authentication** (default): Use only in trusted environments

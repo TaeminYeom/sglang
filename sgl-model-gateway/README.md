@@ -810,6 +810,7 @@ Set `--cors-allowed-origins` for browser access.
 - Workers listed in `--worker-urls` inherit the router API key automatically.
 - When adding workers dynamically, provide explicit API keys via payload or query string; they do **not** inherit automatically.
 - When a worker API key is configured, the gateway sends it as `Authorization: Bearer <key>` for both the initial HTTP `/health` probe during registration and periodic HTTP health checks. This also supports workers behind proxies that require authentication for health endpoints.
+- In the regular HTTP router, a configured worker API key takes precedence over the client's `Authorization` header for inference, proxied GET requests, and requests broadcast to workers. Only the worker's Bearer token is sent; without a worker key, client authorization is forwarded. The OpenAI backend router retains its client-key-first BYOK behavior, and PD routing is unchanged.
 
 ```bash
 # Router and initial workers share the same key
